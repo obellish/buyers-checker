@@ -8,6 +8,9 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+clap = "4"
+miette = { version = "7", features = ["fancy"] }
+tokio = { version = "1", features = ["fs", "rt-multi-thread"] }
 
 [workspace]
 resolver = "2"
@@ -38,8 +41,10 @@ todo = "deny"
 try_err = "warn"
 undocumented_unsafe_blocks = "deny"
 unimplemented = "deny"
+unnecessary_wraps = "allow"
 unsafe_derive_deserialize = "allow"
 used_underscore_binding = "allow"
+useless_conversion = "allow"
 
 [workspace.package]
 edition = "2021"
