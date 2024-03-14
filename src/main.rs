@@ -35,23 +35,30 @@ fn main() -> Result<()> {
 }
 
 async fn run() -> Result<()> {
+	let log_filter_layer = EnvFilter::try_from_default_env()
+		.or_else(|_| EnvFilter::try_new("debug"))
+		.into_diagnostic()?;
+
 	let log_fmt_layer = fmt::layer()
 		.pretty()
 		.with_ansi(true)
 		.with_thread_ids(true)
 		.with_thread_names(true)
-		.with_file(false)
-		.with_filter(EnvFilter::try_new("debug").into_diagnostic()?);
+		.with_file(false);
 
-	let output_path = "./output.log";
+	let output_file = tokio::fs::File::create("./output.log")
+		.await
+		.into_diagnostic()?
+		.into_std()
+		.await;
 
-	let output_file = std::fs::File::create(output_path).into_diagnostic()?;
 	let log_fs_layer = fmt::layer()
-		.with_ansi(false)
 		.compact()
+		.with_ansi(false)
 		.with_writer(output_file);
 
 	tracing_subscriber::registry()
+		.with(log_filter_layer)
 		.with(log_fmt_layer)
 		.with(log_fs_layer)
 		.try_init()
@@ -59,40 +66,40 @@ async fn run() -> Result<()> {
 
 	let args = Args::try_parse().into_diagnostic()?;
 
-	let mut futures = Vec::new();
 	if let Some(file) = args.file_path {
 		check_file(file).await?;
 	} else if let Some(folder) = args.folder_path {
-		check_directory(folder, &mut futures).await?;
+		check_directory(folder).await?;
 	} else {
 		panic!("No file or folder path was given.");
 	}
 
-	futures::future::try_join_all(futures).await?;
-
 	Ok(())
 }
 
-fn check_directory<'a>(
-	path: PathBuf,
-	futures: &'a mut Vec<BoxFuture<'static, Result<()>>>,
-) -> BoxFuture<'a, Result<()>> {
+fn check_directory(path: PathBuf) -> BoxFuture<'static, Result<()>> {
 	event!(Level::INFO, ?path, "checking directory");
 	assert!(path.is_dir());
 	async move {
 		let mut dir_stream = ReadDirStream::new(read_dir(path).await.into_diagnostic()?);
 
+		let mut futures = Vec::new();
+
 		while let Some(entry) = dir_stream.try_next().await.into_diagnostic()? {
 			let path = entry.path();
 
 			if path.is_file() {
-				futures.push(check_file(path));
-			} else if path.is_dir() {
-				check_directory(path, futures).await?;
+				futures.push(tokio::spawn(async move { check_file(path).await }));
 			} else {
-				panic!("invalid path {} found", path.display());
+				event!(Level::WARN, ?path, "path is not a file");
 			}
 		}
+
+		futures::future::try_join_all(futures)
+			.await
+			.into_diagnostic()?
+			.into_iter()
+			.collect::<Result<()>>()?;
 
 		Ok(())
 	}
