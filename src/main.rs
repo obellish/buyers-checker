@@ -5,10 +5,11 @@ use std::{
 
 use clap::Parser;
 use csv_async::AsyncReaderBuilder;
-use futures::{future::BoxFuture, FutureExt as _, TryStreamExt as _};
+use futures::{future::BoxFuture, FutureExt as _, Stream, StreamExt as _, TryStreamExt as _};
 use miette::{IntoDiagnostic as _, Result};
 use tokio::{
 	fs::{read_dir, File},
+	io::AsyncRead,
 	runtime::Builder,
 };
 use tokio_stream::wrappers::ReadDirStream;
@@ -116,23 +117,23 @@ fn check_file(path: PathBuf) -> BoxFuture<'static, Result<()>> {
 			.has_headers(false)
 			.create_reader(file);
 
-		let mut record_stream = reader.records();
+		let records = reader
+			.records()
+			.and_then(|item| {
+				let index = item.get(0).and_then(|s| s.parse::<usize>().ok());
+				let barcode = item.get(BARCODE_INDEX).and_then(|s| {
+					let mut out = s.to_owned();
+					out.pop();
+					out.parse::<u64>().ok()
+				});
 
-		let mut records = Vec::new();
-
-		while let Some(item) = record_stream.try_next().await.into_diagnostic()? {
-			let Some(index) = item.get(0).and_then(|s| s.parse::<usize>().ok()) else {
-				continue;
-			};
-			let Some(barcode) = item.get(BARCODE_INDEX).and_then(|s| {
-				let mut out = s.to_owned();
-				out.pop();
-				out.parse::<u64>().ok()
-			}) else {
-				continue;
-			};
-			records.push((index, barcode));
-		}
+				futures::future::ok(index.zip(barcode))
+			})
+			.filter_map(|s| {
+				futures::future::ready(if let Ok(Some(s)) = s { Some(s) } else { None })
+			})
+			.collect::<Vec<_>>()
+			.await;
 
 		for (i, (record_index, record)) in records.iter().enumerate().skip(1) {
 			let Some((_, before)) = records.get(i - 1) else {
