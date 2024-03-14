@@ -1,6 +1,48 @@
+lints.workspace = true
+
 [package]
+edition.workspace = true
+license.workspace = true
 name = "buyers-checker"
-version = "0.1.0"
-edition = "2021"
+rust-version.workspace = true
+version.workspace = true
 
 [dependencies]
+
+[workspace]
+resolver = "2"
+
+[workspace.lints.rust]
+elided_lifetimes_in_paths = "warn"
+
+[workspace.lints.clippy]
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+disallowed_methods = "deny"
+float_cmp = "allow"
+fn_params_excessive_bools = "allow"
+impl_trait_in_params = "warn"
+module_name_repetitions = "allow"
+needless_pass_by_value = "allow"
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+redundant_pub_crate = "allow"
+redundant_type_annotations = "warn"
+significant_drop_tightening = "allow"
+similar_names = "allow"
+str_to_string = "deny"
+struct_excessive_bools = "allow"
+todo = "deny"
+try_err = "warn"
+undocumented_unsafe_blocks = "deny"
+unimplemented = "deny"
+unsafe_derive_deserialize = "allow"
+used_underscore_binding = "allow"
+
+[workspace.package]
+edition = "2021"
+license = "MIT or Apache-2.0"
+rust-version = "1.75"         # Due to returning `impl Trait` in traits.
+version = "0.1.0"
