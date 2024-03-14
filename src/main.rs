@@ -110,7 +110,7 @@ fn check_file(path: PathBuf) -> BoxFuture<'static, Result<()>> {
 	assert!(path.is_file());
 	event!(Level::DEBUG, ?path, "checking file");
 	async move {
-		let file = File::open(path).await.into_diagnostic()?;
+		let file = File::open(&path).await.into_diagnostic()?;
 
 		let mut reader = AsyncReaderBuilder::new()
 			.has_headers(false)
@@ -121,28 +121,27 @@ fn check_file(path: PathBuf) -> BoxFuture<'static, Result<()>> {
 		let mut records = Vec::new();
 
 		while let Some(item) = record_stream.try_next().await.into_diagnostic()? {
-			records.extend(
-				item.get(BARCODE_INDEX)
-					.map(|s| {
-						let mut out = s.to_owned();
-						out.pop();
-						out
-					})
-					.filter(|s| !s.is_empty()),
-			);
+			let Some(index) = item.get(0).and_then(|s| s.parse::<usize>().ok()) else {
+				continue;
+			};
+			let Some(barcode) = item.get(BARCODE_INDEX).and_then(|s| {
+				let mut out = s.to_owned();
+				out.pop();
+				out.parse::<u64>().ok()
+			}) else {
+				continue;
+			};
+			records.push((index, barcode));
 		}
 
-		let cloned_records = records.clone();
+		for (i, (record_index, record)) in records.iter().enumerate().skip(1) {
+			let Some((_, before)) = records.get(i - 1) else {
+				continue;
+			};
 
-		records.sort();
-
-		assert_eq!(records.len(), cloned_records.len());
-
-		for i in 0..records.len() - 1 {
-			let original = cloned_records.get(i);
-			let sorted = records.get(i);
-			event!(Level::TRACE, ?original, ?sorted, %i, "matching records");
-			assert_eq!(original, sorted);
+			if record - 1 != *before {
+				event!(Level::ERROR, ?path, %record_index, %record);
+			}
 		}
 
 		Ok(())
