@@ -1,5 +1,5 @@
 use std::{
-	path::PathBuf,
+	path::{Path, PathBuf},
 	sync::atomic::{AtomicUsize, Ordering::SeqCst},
 };
 
@@ -18,7 +18,6 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 static THREAD_ID: AtomicUsize = AtomicUsize::new(1);
 
 const BARCODE_INDEX: usize = 4;
-const OUTPUT_FOLDER: &str = "./outputs";
 
 fn main() -> Result<()> {
 	Builder::new_multi_thread()
@@ -47,10 +46,12 @@ async fn run() -> Result<()> {
 		.with_thread_names(true)
 		.with_file(false);
 
-	// We don't care if the output directory didn't exist.
-	_ = tokio::fs::remove_dir_all(OUTPUT_FOLDER).await;
+	let args = Args::try_parse().into_diagnostic()?;
 
-	tokio::fs::create_dir_all(OUTPUT_FOLDER)
+	// We don't care if the output directory didn't exist.
+	_ = tokio::fs::remove_dir_all(&args.output_folder).await;
+
+	tokio::fs::create_dir_all(&args.output_folder)
 		.await
 		.into_diagnostic()?;
 
@@ -72,19 +73,18 @@ async fn run() -> Result<()> {
 		.try_init()
 		.into_diagnostic()?;
 
-	let args = Args::try_parse().into_diagnostic()?;
-
 	if let Some(file) = args.file_path {
-		check_file(file)
+		check_file(&file, &args.output_folder).await?;
 	} else if let Some(folder) = args.folder_path {
-		check_directory(folder)
+		check_directory(folder, args.output_folder).await?;
 	} else {
 		panic!("No file or folder path was given.");
 	}
-	.await
+
+	Ok(())
 }
 
-fn check_directory(path: PathBuf) -> BoxFuture<'static, Result<()>> {
+fn check_directory<'a>(path: PathBuf, output_path: PathBuf) -> BoxFuture<'a, Result<()>> {
 	event!(Level::INFO, ?path, "checking directory");
 	assert!(path.is_dir());
 	async move {
@@ -96,7 +96,10 @@ fn check_directory(path: PathBuf) -> BoxFuture<'static, Result<()>> {
 			let path = entry.path();
 
 			if path.is_file() {
-				futures.push(tokio::spawn(async move { check_file(path).await }));
+				let output_path = output_path.clone();
+				futures.push(tokio::spawn(async move {
+					check_file(&path, &output_path).await
+				}));
 			} else {
 				event!(Level::WARN, ?path, "path is not a file");
 			}
@@ -113,11 +116,11 @@ fn check_directory(path: PathBuf) -> BoxFuture<'static, Result<()>> {
 	.boxed()
 }
 
-fn check_file(path: PathBuf) -> BoxFuture<'static, Result<()>> {
-	assert!(path.is_file());
-	event!(Level::DEBUG, ?path, "checking file");
+fn check_file<'a>(input_path: &'a Path, output_path: &'a Path) -> BoxFuture<'a, Result<()>> {
+	assert!(input_path.is_file());
+	event!(Level::DEBUG, ?input_path, "checking file");
 	async move {
-		let file = File::open(&path).await.into_diagnostic()?;
+		let file = File::open(&input_path).await.into_diagnostic()?;
 
 		let mut reader = AsyncReaderBuilder::new()
 			.has_headers(false)
@@ -139,11 +142,19 @@ fn check_file(path: PathBuf) -> BoxFuture<'static, Result<()>> {
 			.await
 			.into_diagnostic()?;
 
-		let output_path = format!(
-			"{OUTPUT_FOLDER}/{}",
-			path.file_name()
+		// let output_path = format!(
+		// 	"{output_paht}/{}",
+		// 	input_path
+		// 		.file_name()
+		// 		.and_then(|s| s.to_str())
+		// 		.unwrap_or("FAIL.txt")
+		// );
+
+		let output_path = output_path.join(
+			input_path
+				.file_name()
 				.and_then(|s| s.to_str())
-				.unwrap_or("FAIL.txt")
+				.unwrap_or("FAIL.txt"),
 		);
 
 		let output_file_future = File::create(output_path);
@@ -159,7 +170,7 @@ fn check_file(path: PathBuf) -> BoxFuture<'static, Result<()>> {
 			};
 
 			if record - 1 != *before {
-				event!(Level::ERROR, ?path, %record_index, %record);
+				event!(Level::ERROR, ?input_path, %record_index, %record);
 
 				let string_record = [record_index.to_string(), record.to_string()]
 					.into_iter()
@@ -192,4 +203,7 @@ struct Args {
 	/// Must have valid CSV files.
 	#[arg(long, value_name = "DIRECTORY")]
 	folder_path: Option<PathBuf>,
+	/// The folder to output files to
+	#[arg(short, long, value_name = "DIRECTORY")]
+	output_folder: PathBuf,
 }
