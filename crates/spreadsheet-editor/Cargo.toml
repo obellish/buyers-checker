@@ -1,0 +1,10 @@
+lints.workspace = true
+
+[package]
+edition.workspace = true
+license.workspace = true
+name = "spreadsheet-editor"
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]

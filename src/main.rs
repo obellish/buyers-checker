@@ -4,7 +4,7 @@ use std::{
 };
 
 use clap::Parser;
-use csv_async::AsyncReaderBuilder;
+use csv_async::{AsyncReaderBuilder, AsyncWriterBuilder, StringRecord};
 use futures::{future::BoxFuture, FutureExt as _, TryStreamExt as _};
 use miette::{IntoDiagnostic as _, Result};
 use tokio::{
@@ -18,6 +18,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 static THREAD_ID: AtomicUsize = AtomicUsize::new(1);
 
 const BARCODE_INDEX: usize = 4;
+const OUTPUT_FOLDER: &str = "./outputs";
 
 fn main() -> Result<()> {
 	Builder::new_multi_thread()
@@ -46,7 +47,14 @@ async fn run() -> Result<()> {
 		.with_thread_names(true)
 		.with_file(false);
 
-	let output_file = tokio::fs::File::create("./output.log")
+	// We don't care if the output directory didn't exist.
+	_ = tokio::fs::remove_dir_all(OUTPUT_FOLDER).await;
+
+	tokio::fs::create_dir_all(OUTPUT_FOLDER)
+		.await
+		.into_diagnostic()?;
+
+	let output_file = tokio::fs::File::create("./outputs/log_output.log")
 		.await
 		.into_diagnostic()?
 		.into_std()
@@ -67,14 +75,13 @@ async fn run() -> Result<()> {
 	let args = Args::try_parse().into_diagnostic()?;
 
 	if let Some(file) = args.file_path {
-		check_file(file).await?;
+		check_file(file)
 	} else if let Some(folder) = args.folder_path {
-		check_directory(folder).await?;
+		check_directory(folder)
 	} else {
 		panic!("No file or folder path was given.");
 	}
-
-	Ok(())
+	.await
 }
 
 fn check_directory(path: PathBuf) -> BoxFuture<'static, Result<()>> {
@@ -132,6 +139,20 @@ fn check_file(path: PathBuf) -> BoxFuture<'static, Result<()>> {
 			.await
 			.into_diagnostic()?;
 
+		let output_path = format!(
+			"{OUTPUT_FOLDER}/{}",
+			path.file_name()
+				.and_then(|s| s.to_str())
+				.unwrap_or("FAIL.txt")
+		);
+
+		let output_file_future = File::create(output_path);
+
+		let mut output_writer = AsyncWriterBuilder::new()
+			.flexible(false)
+			.has_headers(false)
+			.create_writer(output_file_future.await.into_diagnostic()?);
+
 		for (i, (record_index, record)) in records.iter().enumerate().skip(1) {
 			let Some((_, before)) = records.get(i - 1) else {
 				continue;
@@ -139,6 +160,17 @@ fn check_file(path: PathBuf) -> BoxFuture<'static, Result<()>> {
 
 			if record - 1 != *before {
 				event!(Level::ERROR, ?path, %record_index, %record);
+
+				let string_record = [record_index.to_string(), record.to_string()]
+					.into_iter()
+					.collect::<StringRecord>();
+
+				let byte_record = string_record.into_byte_record();
+
+				output_writer
+					.write_byte_record(&byte_record)
+					.await
+					.into_diagnostic()?;
 			}
 		}
 
