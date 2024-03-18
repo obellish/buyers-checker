@@ -1,6 +1,7 @@
+mod error;
+
 use std::path::Path;
 
-use miette::{IntoDiagnostic as _, Result};
 use tokio::fs;
 use tracing_subscriber::{
 	fmt::{
@@ -11,13 +12,14 @@ use tracing_subscriber::{
 	EnvFilter,
 };
 
-pub async fn setup_tracing<P>(output_folder: P) -> Result<()>
+pub use self::error::TracingSetupError;
+
+pub async fn setup_tracing<P>(output_folder: P) -> Result<(), TracingSetupError>
 where
 	P: AsRef<Path> + Send,
 {
-	let log_filter_layer = EnvFilter::try_from_default_env()
-		.or_else(|_| EnvFilter::try_new("debug"))
-		.into_diagnostic()?;
+	let log_filter_layer =
+		EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("debug"))?;
 
 	let log_fmt_layer = setup_console();
 	let log_fs_layer = setup_file(output_folder).await?;
@@ -26,8 +28,7 @@ where
 		.with(log_filter_layer)
 		.with(log_fmt_layer)
 		.with(log_fs_layer)
-		.try_init()
-		.into_diagnostic()?;
+		.try_init()?;
 
 	Ok(())
 }
@@ -42,17 +43,16 @@ fn setup_console<T>() -> Layer<T, Pretty, Format<Pretty>> {
 
 async fn setup_file<P, T>(
 	output_folder: P,
-) -> Result<Layer<T, DefaultFields, Format<Compact>, std::fs::File>>
+) -> std::io::Result<Layer<T, DefaultFields, Format<Compact>, std::fs::File>>
 where
 	P: AsRef<Path> + Send,
 {
 	let output_folder = output_folder.as_ref();
 	_ = fs::remove_dir_all(&output_folder).await;
 
-	fs::create_dir_all(output_folder).await.into_diagnostic()?;
+	fs::create_dir_all(output_folder).await?;
 	let output_log_file = fs::File::create(output_folder.join("log_output.log"))
-		.await
-		.into_diagnostic()?
+		.await?
 		.into_std()
 		.await;
 

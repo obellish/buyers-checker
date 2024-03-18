@@ -25,12 +25,16 @@ fn main() -> Result<()> {
 async fn run() -> Result<()> {
 	let args = Args::try_parse().into_diagnostic()?;
 
-	setup_tracing(&args.output_folder).await?;
+	setup_tracing(&args.output_folder).await.into_diagnostic()?;
 
 	if let Some(file) = args.file_path {
-		check_file(&file, &args.output_folder).await?;
+		check_file(&file, &args.output_folder)
+			.await
+			.into_diagnostic()?;
 	} else if let Some(folder) = args.folder_path {
-		check_directory(folder, args.output_folder).await?;
+		check_directory(folder, args.output_folder)
+			.await
+			.into_diagnostic()?;
 	} else {
 		panic!("No file or folder path was given.");
 	}
