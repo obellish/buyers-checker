@@ -23,7 +23,6 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
 ] }
 
 [workspace]
-members = ["crates/spreadsheet-editor"]
 resolver = "2"
 
 [workspace.lints.rust]
