@@ -5,18 +5,19 @@ use std::path::{Path, PathBuf};
 use csv_async::{AsyncReaderBuilder, AsyncWriterBuilder, StringRecord};
 use futures::{
 	future::{BoxFuture, FutureExt},
-	TryStreamExt as _,
+	TryFutureExt, TryStreamExt as _,
 };
 use tokio::fs::File;
 use tracing::{event, Level};
 
 pub use self::error::{CheckFileError, CheckFolderError};
+use crate::util::visit;
 
 pub async fn check_directory(path: PathBuf, output_path: PathBuf) -> Result<(), CheckFolderError> {
 	event!(Level::INFO, ?path, "checking directory");
 	assert!(path.is_dir());
 
-	let mut stream = std::pin::pin!(flatten_dir::visit(path));
+	let mut stream = std::pin::pin!(visit(path));
 	let mut futures = Vec::new();
 
 	while let Some(entry) = stream.try_next().await? {
@@ -28,9 +29,8 @@ pub async fn check_directory(path: PathBuf, output_path: PathBuf) -> Result<(), 
 	}
 
 	futures::future::try_join_all(futures)
-		.await?
-		.into_iter()
-		.collect::<Result<(), CheckFileError>>()?;
+		.map_ok(|values| values.into_iter().collect::<Result<(), CheckFileError>>())
+		.await??;
 
 	Ok(())
 }
@@ -98,43 +98,4 @@ pub fn check_file<'a>(
 		Ok(())
 	}
 	.boxed()
-}
-
-mod flatten_dir {
-	use std::{io, path::PathBuf};
-
-	use futures::{stream, Stream, StreamExt as _, TryStreamExt as _};
-	use tokio::fs::{self, DirEntry};
-	use tokio_stream::wrappers::ReadDirStream;
-
-	async fn one_level(path: PathBuf, to_visit: &mut Vec<PathBuf>) -> io::Result<Vec<DirEntry>> {
-		let mut dir = ReadDirStream::new(fs::read_dir(path).await?);
-		let mut files = Vec::new();
-
-		while let Some(child) = dir.try_next().await? {
-			if child.metadata().await?.is_dir() {
-				to_visit.push(child.path());
-			} else {
-				files.push(child);
-			}
-		}
-
-		Ok(files)
-	}
-
-	pub fn visit<P>(path: P) -> impl Stream<Item = Result<DirEntry, io::Error>>
-	where
-		P: Into<PathBuf>,
-	{
-		stream::unfold(vec![path.into()], |mut to_visit| async {
-			let path = to_visit.pop()?;
-			let file_stream = match one_level(path, &mut to_visit).await {
-				Ok(files) => stream::iter(files).map(Ok).left_stream(),
-				Err(e) => stream::once(async { Err(e) }).right_stream(),
-			};
-
-			Some((file_stream, to_visit))
-		})
-		.flatten()
-	}
 }

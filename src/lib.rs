@@ -1,5 +1,6 @@
 mod file_checks;
 mod tracing_setup;
+mod util;
 
 use std::path::PathBuf;
 
