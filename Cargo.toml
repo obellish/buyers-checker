@@ -9,7 +9,7 @@ version.workspace = true
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-csv-async = { version = "1", default-features = false, features = ["tokio"] }
+csv-async = { version = "1", features = ["tokio"] }
 futures = "0.3"
 miette = { version = "7", features = ["fancy"] }
 tokio = { version = "1", features = ["fs", "rt-multi-thread", "tracing"] }
