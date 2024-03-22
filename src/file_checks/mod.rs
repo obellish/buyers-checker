@@ -2,7 +2,7 @@ mod error;
 
 use std::path::{Path, PathBuf};
 
-use csv_async::{AsyncReaderBuilder, AsyncWriterBuilder, StringRecord};
+use csv_async::{AsyncReaderBuilder, AsyncWriterBuilder};
 use futures::{StreamExt as _, TryFutureExt as _, TryStreamExt as _};
 use tokio::fs::File;
 use tracing::{event, Level};
@@ -79,7 +79,7 @@ pub async fn check_file(input_path: &Path, output_path: &Path) -> Result<(), Che
 
 			let record = BadDataRecord {
 				index: record_index,
-				data: record.to_string(),
+				data: record,
 			};
 
 			output_writer.serialize(record).await?;

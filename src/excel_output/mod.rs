@@ -6,28 +6,27 @@ use std::{
 };
 
 use csv_async::AsyncReaderBuilder;
-use futures::{StreamExt as _, TryStreamExt as _};
+use futures::{Stream, StreamExt as _, TryStreamExt as _};
 use rust_xlsxwriter::{Workbook, Worksheet};
-use tokio::{
-	fs::{DirEntry, File},
-	io::AsyncWriteExt,
-};
+use tokio::{fs::File, io::AsyncWriteExt as _};
 
 pub use self::error::ExcelOutputError;
-use crate::util::visit;
+use crate::{util::visit, BadDataRecord};
 
 pub async fn collect_csv_into_workbook(output_folder: &Path) -> Result<(), ExcelOutputError> {
-	let all_csv_files: Vec<_> = collect_all_file_paths(output_folder).await?;
+	// let all_csv_files: Vec<_> = collect_all_file_paths(output_folder).try_collect().await?;
+
+	let mut all_csv_files_stream = pin!(collect_all_file_paths(output_folder));
 
 	let mut workbook = Workbook::new();
 
-	for path in all_csv_files {
+	while let Some(path) = all_csv_files_stream.try_next().await? {
 		let mut sheet = Worksheet::new();
 
 		let mut file_name = path
 			.file_name()
 			.and_then(|s| s.to_str())
-			.unwrap()
+			.ok_or(ExcelOutputError::NoFileName)?
 			.to_owned();
 
 		file_name.truncate(file_name.len() - 4);
@@ -38,21 +37,21 @@ pub async fn collect_csv_into_workbook(output_folder: &Path) -> Result<(), Excel
 
 		sheet.set_name(file_name)?;
 
-		let file = File::open(path).await?;
+		let file = File::open(path);
 
 		let mut input_reader = AsyncReaderBuilder::new()
 			.has_headers(false)
 			.flexible(false)
-			.create_reader(file);
+			.create_deserializer(file.await?);
 
-		let mut input_stream = input_reader.records().enumerate();
+		let mut input_stream = input_reader.deserialize::<BadDataRecord>().enumerate();
 
 		while let Some((i, result)) = input_stream.next().await {
 			let record = result?;
 			let i = i as u32;
 
-			sheet.write(i, 0, record.get(0).unwrap())?;
-			sheet.write(i, 1, record.get(1).unwrap())?;
+			sheet.write(i, 0, record.index.to_string())?;
+			sheet.write(i, 1, record.data.to_string())?;
 		}
 
 		workbook.push_worksheet(sheet);
@@ -69,26 +68,22 @@ pub async fn collect_csv_into_workbook(output_folder: &Path) -> Result<(), Excel
 	Ok(())
 }
 
-async fn collect_all_file_paths<C, P>(output_folder: P) -> Result<C, ExcelOutputError>
+fn collect_all_file_paths<P>(
+	output_folder: P,
+) -> impl Stream<Item = Result<PathBuf, std::io::Error>>
 where
-	C: FromIterator<PathBuf>,
 	P: AsRef<Path> + Send,
 {
 	let input_stream = visit(output_folder);
 
-	let temp_output: Vec<_> = input_stream.try_collect().await?;
+	input_stream.try_filter_map(|item| {
+		let path = item.path();
+		let extension = path.extension().and_then(|s| s.to_str());
 
-	Ok(temp_output
-		.into_iter()
-		.filter_map(|dir| {
-			let path = dir.path();
-			let extension = path.extension().and_then(|s| s.to_str());
-
-			if extension == Some("csv") {
-				Some(path)
-			} else {
-				None
-			}
+		futures::future::ok(if extension == Some("csv") {
+			Some(path)
+		} else {
+			None
 		})
-		.collect())
+	})
 }

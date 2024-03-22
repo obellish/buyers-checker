@@ -37,5 +37,5 @@ pub struct Args {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct BadDataRecord {
 	index: usize,
-	data: String,
+	data: u64,
 }

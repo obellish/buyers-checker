@@ -12,6 +12,7 @@ pub enum ExcelOutputError {
 	Io(IoError),
 	Csv(CsvError),
 	Xlsx(XlsxError),
+	NoFileName,
 }
 
 impl Display for ExcelOutputError {
@@ -20,6 +21,7 @@ impl Display for ExcelOutputError {
 			Self::Io(e) => Display::fmt(e, f),
 			Self::Csv(e) => Display::fmt(e, f),
 			Self::Xlsx(e) => Display::fmt(e, f),
+			Self::NoFileName => f.write_str("no file name was present in the path"),
 		}
 	}
 }
@@ -48,6 +50,7 @@ impl StdError for ExcelOutputError {
 			Self::Io(e) => Some(e),
 			Self::Csv(e) => Some(e),
 			Self::Xlsx(e) => Some(e),
+			Self::NoFileName => None,
 		}
 	}
 }
