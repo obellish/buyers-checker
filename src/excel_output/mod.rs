@@ -14,8 +14,6 @@ pub use self::error::ExcelOutputError;
 use crate::{util::visit, BadDataRecord};
 
 pub async fn collect_csv_into_workbook(output_folder: &Path) -> Result<(), ExcelOutputError> {
-	// let all_csv_files: Vec<_> = collect_all_file_paths(output_folder).try_collect().await?;
-
 	let mut all_csv_files_stream = pin!(collect_all_file_paths(output_folder));
 
 	let mut workbook = Workbook::new();
@@ -50,8 +48,8 @@ pub async fn collect_csv_into_workbook(output_folder: &Path) -> Result<(), Excel
 			let record = result?;
 			let i = i as u32;
 
-			sheet.write(i, 0, record.index.to_string())?;
-			sheet.write(i, 1, record.data.to_string())?;
+			sheet.write_string(i, 0, record.index.to_string())?;
+			sheet.write_string(i, 1, record.data.to_string())?;
 		}
 
 		workbook.push_worksheet(sheet);
