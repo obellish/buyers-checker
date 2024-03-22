@@ -1,3 +1,4 @@
+mod excel_output;
 mod file_checks;
 mod tracing_setup;
 mod util;
@@ -5,10 +6,12 @@ mod util;
 use std::path::PathBuf;
 
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 
 pub use self::{
-	file_checks::{check_directory, check_file},
-	tracing_setup::setup_tracing,
+	excel_output::{collect_csv_into_workbook, ExcelOutputError},
+	file_checks::{check_directory, check_file, CheckFileError, CheckFolderError},
+	tracing_setup::{setup_tracing, TracingSetupError},
 };
 
 #[derive(Debug, Parser)]
@@ -27,4 +30,23 @@ pub struct Args {
 	/// The folder to output files to
 	#[arg(short, long, value_name = "DIRECTORY")]
 	pub output_folder: PathBuf,
+	#[arg(short, long)]
+	pub excel_sheet: bool,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct BadDataRecord {
+	index: usize,
+	data: String,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct InputData {
+	index: usize,
+	date_time: String,
+	blank_1: String,
+	blank_2: String,
+	barcode_data: String,
+	bad_index: isize,
+	matches: String,
 }

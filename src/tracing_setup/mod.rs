@@ -37,7 +37,8 @@ fn setup_console<T>() -> Layer<T, Pretty, Format<Pretty>> {
 	layer()
 		.pretty()
 		.with_ansi(true)
-		.with_thread_ids(true)
+		.with_thread_ids(false)
+		.with_file(false)
 		.with_thread_names(true)
 }
 
