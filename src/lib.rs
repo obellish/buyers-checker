@@ -39,14 +39,3 @@ pub struct BadDataRecord {
 	index: usize,
 	data: String,
 }
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct InputData {
-	index: usize,
-	date_time: String,
-	blank_1: String,
-	blank_2: String,
-	barcode_data: String,
-	bad_index: isize,
-	matches: String,
-}
