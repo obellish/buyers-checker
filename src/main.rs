@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
-use buyers_checker::{check_directory, check_file, setup_tracing, Args};
+use buyers_checker::{check_directory, check_file, collect_csv_into_workbook, setup_tracing, Args};
 use clap::Parser;
 use miette::{IntoDiagnostic as _, Result};
 use tokio::runtime::Builder;
@@ -32,11 +32,17 @@ async fn run() -> Result<()> {
 			.await
 			.into_diagnostic()?;
 	} else if let Some(folder) = args.folder_path {
-		check_directory(folder, args.output_folder)
+		check_directory(folder, args.output_folder.clone())
 			.await
 			.into_diagnostic()?;
 	} else {
 		panic!("No file or folder path was given.");
+	}
+
+	if args.excel_sheet {
+		collect_csv_into_workbook(&args.output_folder)
+			.await
+			.into_diagnostic()?;
 	}
 
 	Ok(())

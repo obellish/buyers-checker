@@ -27,9 +27,9 @@ where
 
 pub fn visit<P>(path: P) -> impl Stream<Item = Result<DirEntry, io::Error>>
 where
-	P: Into<PathBuf>,
+	P: AsRef<Path>,
 {
-	stream::unfold(vec![path.into()], |mut to_visit| async {
+	stream::unfold(vec![path.as_ref().to_path_buf()], |mut to_visit| async {
 		let path = to_visit.pop()?;
 		let file_stream = match one_level(path, &mut to_visit).await {
 			Ok(files) => stream::iter(files).map(Ok).left_stream(),
